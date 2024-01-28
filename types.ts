@@ -6,9 +6,14 @@ export type Trinket = {
     mul_modifiers: { [id: string]: number }
 }
 
+export enum ThrowableNames {
+    old_shoe = 'Old Shoe',
+    beach_ball = 'Beach Ball',
+}
+
 export type Throwable = {
     type: 'throwable'
-    name: string
+    name: ThrowableNames
     description: string
     damage: number
     bounce_chance: number
@@ -20,7 +25,6 @@ export type Monster = {
     description: string
     health: number
     attack: number
-    defense: number
     loot_table: LootEntry[]
 }
 

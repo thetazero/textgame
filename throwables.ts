@@ -1,22 +1,22 @@
-import type { Throwable } from './types'
+import { Throwable, ThrowableNames } from './types'
 
 export const old_shoe: Throwable = {
     type: 'throwable',
-    name: 'old shoe',
+    name: ThrowableNames.old_shoe,
     description: 'An old shoe',
-    damage: 1,
+    damage: 4,
     bounce_chance: 0.1
 }
 
 export const beach_ball: Throwable = {
     type: 'throwable',
-    name: 'beach ball',
+    name: ThrowableNames.beach_ball,
     description: 'A beach ball',
-    damage: 0.5,
+    damage: 2,
     bounce_chance: 0.5
 }
 
-export const throwables: { [key: string]: Throwable } = {
-    old_shoe,
-    beach_ball
+export const throwables: { [key in ThrowableNames]: Throwable } = {
+    [ThrowableNames.old_shoe]: old_shoe,
+    [ThrowableNames.beach_ball]: beach_ball
 }

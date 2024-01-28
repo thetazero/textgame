@@ -1,6 +1,6 @@
 import * as readline from 'readline'
 import * as markup from './markup'
-import type { Trinket, Throwable, Monster } from './types'
+import type { Trinket, Throwable, Monster, ThrowableNames } from './types'
 import * as trinkets from './trinkets'
 import * as monsters from './monsters'
 import * as throwables from './throwables'
@@ -14,12 +14,17 @@ enum Scenes {
 }
 
 type GameState = {
-    scene: Scenes,
-    first_time: boolean,
+    scene: Scenes
+    first_time: boolean
     monster: Monster | null
     trinkets: Trinket[]
-    throwables: Throwable[]
+    throwables: {
+        [key in ThrowableNames]?: number
+    }
+    health: number
 }
+
+const max_health = 10
 
 type Action = {
     name: string
@@ -41,24 +46,47 @@ function cabinet_thing(level: number): Trinket | Monster | Throwable {
     }
 }
 
-function game_state_to_string(state: GameState): string {
-    switch (state.scene) {
-        case Scenes.Main:
-            if (state.first_time) {
-                state.first_time = false
-                return `Welcome to ${markup.bold}throw cabinet garage${markup.reset}!
+const GameStateToString: { [key in Scenes]: (state: GameState) => string } = {
+    [Scenes.Main]: (state: GameState) => {
+        return ''
+    },
+    [Scenes.Cabinet]: (state: GameState) => {
+        return 'You are looking at a cabinet of curiosities'
+    },
+    [Scenes.Garage]: (state: GameState) => {
+        return 'You are at your garage'
+    },
+    [Scenes.Fight]: (state: GameState) => {
+        return `An evil ${monsters.monster_to_string(state.monster!)} is attacking you!`
+    },
+}
+
+const GameStateRunner: { [key in Scenes]: (state: GameState) => void } = {
+    [Scenes.Main]: (state: GameState) => {
+        if (state.first_time) {
+            state.first_time = false
+            console.log(`Welcome to ${markup.bold}throw cabinet garage${markup.reset}!
 Open the cabinet of curiosities to get a surprise.
-Go to the garage to improve your gear.`
-            } else {
-                return 'You are in limbo'
-            }
-        case Scenes.Cabinet:
-            return `You are looking at a ${'???'} cabinet`
-        case Scenes.Garage:
-            return 'You are looking at a garage'
-        case Scenes.Fight:
-            return `An evil ${markup.make_bold(state.monster!.name)} is attacking you!`
-    }
+Go to the garage to improve your gear.`)
+        }
+        if (state.health < max_health) {
+            state.health = max_health
+            console.log('You feel refreshed!')
+        }
+    },
+    [Scenes.Cabinet]: (state: GameState) => { },
+    [Scenes.Garage]: (state: GameState) => { },
+    [Scenes.Fight]: (state: GameState) => {
+        const monster: Monster = state.monster!
+        const damage_taken: number = monster.attack
+        state.health -= damage_taken
+        console.log(`The ${markup.make_bold(monster.name)} attacks you for ${markup.make_bold(damage_taken.toString())} damage!`)
+        console.log(`You have ${markup.make_bold(state.health.toString())} health remaining.`)
+        if (state.health <= 0) {
+            console.log('You died!')
+            process.exit(0)
+        }
+    },
 }
 
 function goto_scene_generator(scene: Scenes): Action {
@@ -74,22 +102,30 @@ const goto_main: Action = goto_scene_generator(Scenes.Main)
 const goto_cabinet: Action = goto_scene_generator(Scenes.Cabinet)
 const goto_garage: Action = goto_scene_generator(Scenes.Garage)
 
-function throwable_to_action(throwable: Throwable): Action {
+function throwable_to_action(name: ThrowableNames, throw_items: { [key in ThrowableNames]?: number }): Action {
+    const throwable: Throwable = throwables.throwables[name]
     return {
-        name: `throw ${throwable.name}:${throwable.damage}`,
+        name: `throw ${name} <${throwable.damage} dmg, ${throw_items[name]} remaining>`,
         execute: (state: GameState) => {
             let keep: boolean = Math.random() < throwable.bounce_chance
             let damage: number = throwable.damage
-            console.log(`You threw a ${markup.make_bold(throwable.name)} for ${markup.make_bold(damage.toString())}!`)
+            console.log(`You threw a ${markup.make_bold(name)} for ${markup.make_bold(damage.toString())} damage!`)
             if (keep) {
-                console.log(`The ${markup.make_bold(throwable.name)} bounced back!`)
+                console.log(`The ${markup.make_bold(name)} bounced back!`)
             } else {
-                for (let i = 0; i < state.throwables.length; i++) {
-                    if (state.throwables[i] === throwable) {
-                        state.throwables.splice(i, 1)
-                        break
-                    }
+                console.log(`You lost the ${markup.make_bold(name)}!`)
+                state.throwables[name]! -= 1
+                if (state.throwables[name] === 0) {
+                    delete state.throwables[name]
                 }
+            }
+            const monster: Monster = state.monster!
+            monster.health -= damage
+            if (monster.health <= 0) {
+                console.log(`You killed the ${markup.make_bold(monster.name)}!`)
+                state.monster = null
+                state.scene = Scenes.Main
+                // TODO: loot
             }
         }
     }
@@ -129,8 +165,11 @@ function get_actions(state: GameState): Action[] {
                                 break
                             case 'throwable':
                                 console.log(`You found a ${markup.make_bold(thing.name)}!`)
-                                state.throwables.push(thing)
-                                break
+                                if (state.throwables[thing.name]) {
+                                    state.throwables[thing.name]! += 1
+                                } else {
+                                    state.throwables[thing.name] = 1
+                                }
                         }
                     }
                 },
@@ -140,7 +179,9 @@ function get_actions(state: GameState): Action[] {
         case Scenes.Garage:
             return [...default_actions]
         case Scenes.Fight:
-            const throw_actions = state.throwables.map(throwable_to_action)
+            const throw_actions = (Object.keys(state.throwables) as ThrowableNames[]).map(
+                (throwable_name) => throwable_to_action(throwable_name, state.throwables)
+            )
             return [
                 ...throw_actions,
                 ...default_actions
@@ -163,13 +204,16 @@ async function main() {
         scene: Scenes.Main,
         first_time: true,
         monster: null,
-        throwables: [],
+        throwables: {},
         trinkets: [],
+        health: max_health,
     }
 
     while (true) {
-        let game_state_string: string = game_state_to_string(state)
+        let game_state_string: string = GameStateToString[state.scene](state)
         console.log(`${markup.bold}<${state.scene.toString().toLowerCase()}>${markup.reset} ${game_state_string}`)
+        GameStateRunner[state.scene](state)
+
         let actions = get_actions(state)
         console.log(actions_to_string(actions))
         const line = await new Promise<string>((resolve) => rl.question('> ', resolve))
