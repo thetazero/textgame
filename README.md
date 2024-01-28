@@ -1,1 +1,3 @@
 # textgame
+
+throw cabinet garage
